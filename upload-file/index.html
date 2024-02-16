@@ -7,13 +7,13 @@
 </head>
 <body>
 
-
     <input type="file" id="fileInput"/>
-    <input type="submit" onclick="uploadFile()"/>
+    <button onclick="uploadFile()">Upload</button> <!-- Change input type to button -->
+  
   <script>
     async function uploadFile() {
       const formData = new FormData();
-      const fileInput = document.getElementById('fileInput'); // Assuming you have an input element with type="file" and id="fileInput"
+      const fileInput = document.getElementById('fileInput');
       
       formData.append('fileUpload', fileInput.files[0]);
 
@@ -25,7 +25,33 @@
 
         if (response.ok) {
           const data = await response.json();
-          console.log(JSON.stringify(data, null, 2));
+
+          const result = JSON.stringify(data, null, 2);
+          console.log(result);
+
+          // Assuming 'id' is present in the API response, you can directly use it
+          const itemID = data.id; 
+
+          // Perform the GraphQL mutation using fetch or a GraphQL client library
+          const graphqlResponse = await fetch('https://api-us-east-1-shared-usea1-02.hygraph.com/v2/clqds0ql9bn4701rtg531426g/master', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              query: `
+                mutation {
+                  publishAsset(where: {id: "${itemID}"}) {
+                    id
+                  }
+                }
+              `,
+            }),
+          });
+
+          const graphqlData = await graphqlResponse.json();
+          console.log('GraphQL Response:', graphqlData);
+          
         } else {
           console.error('Error:', response.status, response.statusText);
         }
