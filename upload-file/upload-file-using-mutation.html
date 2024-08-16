@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Upload to S3</title>
+</head>
+<body>
+
+    <h1>Upload a File</h1>
+    <form id="uploadForm">
+        <label for="fileInput">Choose a file:</label>
+        <input type="file" id="fileInput" name="file" required>
+        <button type="submit">Upload</button>
+    </form>
+
+    <script>
+        async function createAsset() {
+            const query = `
+            mutation createAsset {
+                createAsset(data: {}) {
+                    id
+                    url
+                    upload {
+                        status
+                        expiresAt
+                        error {
+                            code
+                            message
+                        }
+                        requestPostData {
+                            url
+                            date
+                            key
+                            signature
+                            algorithm
+                            policy
+                            credential
+                            securityToken
+                        }
+                    }
+                }
+            }
+            `;
+            const response = await fetch('https://api-us-west-2.hygraph.com/v2/clz0bi58b00db07whfu6lhitt/master', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                   // 'Authorization': `Bearer YOUR_API_TOKEN` // Use your API token if required
+                },
+                body: JSON.stringify({ query })
+            });
+            const data = await response.json();
+            return data.data.createAsset;
+        }
+
+        async function uploadFileToS3(uploadData, file) {
+            const formData = new FormData();
+            formData.append('X-Amz-Date', uploadData.date);
+            formData.append('key', uploadData.key);
+            formData.append('X-Amz-Signature', uploadData.signature);
+            formData.append('X-Amz-Algorithm', uploadData.algorithm);
+            formData.append('policy', uploadData.policy);
+            formData.append('X-Amz-Credential', uploadData.credential);
+            formData.append('X-Amz-Security-Token', uploadData.securityToken);
+            formData.append('file', file); // Ensure 'file' is the last entry
+
+            const response = await fetch(uploadData.url, {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (response.ok) {
+                console.log('File uploaded successfully!');
+            } else {
+                const errorResponse = await response.text();
+                console.error('Failed to upload file', response.statusText, errorResponse);
+            }
+        }
+
+        document.getElementById('uploadForm').addEventListener('submit', async (event) => {
+            event.preventDefault(); // Prevent default form submission
+
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0]; // Get the selected file
+
+            if (file) {
+                try {
+                    const assetData = await createAsset();
+                    const uploadData = assetData.upload.requestPostData;
+
+                    // Proceed to upload the file to S3
+                    await uploadFileToS3(uploadData, file);
+                } catch (error) {
+                    console.error('Error during file upload:', error);
+                }
+            } else {
+                console.error('No file selected');
+            }
+        });
+    </script>
+
+
+</body>
+</html>
