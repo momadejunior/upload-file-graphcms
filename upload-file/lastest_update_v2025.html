@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Upload</title>
+</head>
+<body>
+    <h2>Upload a File</h2>
+    <input type="file" id="fileInput">
+    <button onclick="uploadFile()">Upload</button>
+    <p id="status"></p>
+    <p id="fileUrl"></p>
+
+    <script>
+        const API_URL = "https://us-east-1-shared-usea1-02.cdn.hygraph.com/content/clsx9i67q0mac07uneq5zcr5x/master"; // Replace with your GraphQL API URL
+        const API_TOKEN = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImdjbXMtbWFpbi1wcm9kdWN0aW9uIn0.eyJ2ZXJzaW9uIjozLCJpYXQiOjE3NDMxNDc4NzcsImF1ZCI6WyJodHRwczovL2FwaS11cy1lYXN0LTEtc2hhcmVkLXVzZWExLTAyLmh5Z3JhcGguY29tL3YyL2Nsc3g5aTY3cTBtYWMwN3VuZXE1emNyNXgvbWFzdGVyIiwibWFuYWdlbWVudC1uZXh0LmdyYXBoY21zLmNvbSJdLCJpc3MiOiJodHRwczovL21hbmFnZW1lbnQtdXMtZWFzdC0xLXNoYXJlZC11c2VhMS0wMi5oeWdyYXBoLmNvbS8iLCJzdWIiOiI4ZWFkOTJjNC0yMzExLTRlZjEtODBlMy0xNDcwNDU5MTQ4Y2EiLCJqdGkiOiJjbThzaDhtbjIwN2FzMDdsaWZwOGRmeTVuIn0.4XeWS1fMYTdY5gm29rfpcraL1ME2oRT1uI7V6sCf7JkS2fU20oMV9IZ8Ey3RA-isOrxkzRTim4_p3C_MOIiB6DUpw44cO6J3tHxy-Y9jVx4p_lXCDVyO5KhF5tAdIZ7M9q_GO4dZgjosD2EQdbGDGxzzbGordCd8eFC8N5IZg2z6dsCK22Ssccrig5wG6IoLT3Y_DEPsk_gUV1vyiNHGYj2LV1EIYwCr1HscAvcOWl_48SQ3espLL4DD3_Y1UUGO_pd8VoSdggbK8bY-tUwPa6zc9TAWBtlGSc_VlnUPT6QhDPx_CAFcnVNlhfXmg2LC_8zMw2ye-JBQy8eEMTyoXknaw2VAwV3u5gux_bawitw8ZJ-CfEZbYqrQsbwayq1WdS3MqpFMSUOmKtdyYDrZwuVGfO8za-AtsFaFra-E02Hn6lkQwFQ7t43b-AUm64PxEJrvEwGIsckb7rUE2xR3H1OOj7uxwDx4MFlSu_qnG0rxn8CD8KYDo9pZGRzgUAuLH5OwFpj_zZLqnSicq8AiWQZq3oMTA3krAKOl0faslVRtnqJlyfmExcxliFPIz66WFUCYPJp19v4gMw-yyo6yg7o9e1mcA3zX3PdZORMpdMB-O2sD5DxHmTWw-WYgnIuraCh2XRW36-kgJ304BOLcoLYZmdUaplrg3Q7KpZu_Fjc"; // Replace with your API token
+
+        async function uploadFile() {
+            const fileInput = document.getElementById("fileInput");
+            const statusText = document.getElementById("status");
+            const fileUrlText = document.getElementById("fileUrl");
+
+            if (!fileInput.files.length) {
+                alert("Please select a file to upload.");
+                return;
+            }
+
+            const file = fileInput.files[0];
+            statusText.textContent = "Uploading...";
+
+            try {
+                // Step 1: Get Upload URL from GraphQL API
+                const createAssetResponse = await fetch(API_URL, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${API_TOKEN}`
+                    },
+                    body: JSON.stringify({
+                        query: `
+                            mutation CreateAsset($fileName: String!) {
+                                createAsset(data: { fileName: $fileName }) {
+                                    id
+                                    upload {
+                                        requestPostData {
+                                            url
+                                            date
+                                            key
+                                            signature
+                                            algorithm
+                                            policy
+                                            credential
+                                            securityToken
+                                        }
+                                    }
+                                }
+                            }
+                        `,
+                        variables: { fileName: file.name }
+                    })
+                });
+
+                const createAssetData = await createAssetResponse.json();
+                const asset = createAssetData.data.createAsset;
+
+                if (!asset || !asset.upload || !asset.upload.requestPostData) {
+                    throw new Error("Failed to get upload URL.");
+                }
+
+                const { id, upload } = asset;
+                const { url, key, date, signature, algorithm, policy, credential, securityToken } = upload.requestPostData;
+
+                // Step 2: Upload File to S3
+                const formData = new FormData();
+                formData.append("X-Amz-Date", date);
+                formData.append("key", key);
+                formData.append("X-Amz-Signature", signature);
+                formData.append("X-Amz-Algorithm", algorithm);
+                formData.append("policy", policy);
+                formData.append("X-Amz-Credential", credential);
+                formData.append("X-Amz-Security-Token", securityToken);
+                formData.append("file", file);
+
+                await fetch(url, {
+                    method: "POST",
+                    body: formData,
+                });
+
+                // Step 3: Publish the Asset
+                const publishAssetResponse = await fetch(API_URL, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${API_TOKEN}`
+                    },
+                    body: JSON.stringify({
+                        query: `
+                            mutation PublishAsset($id: ID!) {
+                                publishAsset(where: { id: $id }) {
+                                    id
+                                    url
+                                }
+                            }
+                        `,
+                        variables: { id }
+                    })
+                });
+
+                const publishAssetData = await publishAssetResponse.json();
+                const fileUrl = publishAssetData.data.publishAsset.url;
+
+                statusText.textContent = "Upload successful!";
+                fileUrlText.innerHTML = `File URL: <a href="${fileUrl}" target="_blank">${fileUrl}</a>`;
+
+            } catch (error) {
+                console.error("Upload error:", error);
+                statusText.textContent = "Upload failed.";
+            }
+        }
+    </script>
+</body>
+</html>
